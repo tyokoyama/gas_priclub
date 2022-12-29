@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma-rtl.min.css">
+    <?!= include('css'); ?>
+    <?!= include('vuejs'); ?>
+  </head>
+  <body>
+    <section>
+      <div id="buttons">
+        <input type="button" class="button is-primary" id="shutterbutton" v-bind:disabled="isPainting()" @click="shutter" value="撮影" />
+        <input type="button" class="button is-danger" id="retrybutton" v-bind:disabled="isWait()" @click="retry" value="撮り直し" />
+        <input type="button" class="button is-info" id="penbutton" v-bind:disabled="isWait()" value="ペンで書く" @click="pen"/>
+        <input type="button" class="button is-info" id="stampbutton" v-bind:disabled="isWait()" value="スタンプ" @click="stamp" />
+        <input type="button" class="button is-warning" id="undobutton" v-bind:disabled="isWait()" @click="undo" value="元に戻す" />
+        <input type="button" class="button is-success" id="sendbutton" v-bind:disabled="isSend()" @click="sendImage" value="確定" />
+      </div>
+      <div class="columns">
+        <div class="column is-four-fifths">
+          <video id="video"></video>
+          <canvas id="camera" width="720" height="560"></canvas>
+        </div>
+        <div class="column">
+          <div id="status" v-model="status">{{status}}</div>
+          <div id="countdown" style="font-size: 10rem;">
+            3
+          </div>
+          <div id="param">
+            <p>
+              <label for="select_camera">カメラ</label>
+              <select id="select_camera" onchange="select_camera()"></select>
+            </p>
+          </div>
+        </div>
+      </div>
+      <div id="penctrl">
+        <div class="modal" v-bind:class="{ 'is-active': isActive }">
+          <div class="modal-background"></div>
+          <div class="modal-content" style="background-color: white;">
+            <div>
+              <label class="radio">
+                <input type="radio" name="linecolor" onclick="setColor(0)" />
+                <p style="color: black">■</p>
+              </label>
+            </div>
+            <div>
+              <label class="radio">
+                <input type="radio" name="linecolor" onclick="setColor(1)" />
+                <p style="color: red">■</p>
+              </label>
+            </div>
+            <div>
+              <label class="radio">
+                <input type="radio" name="linecolor" onclick="setColor(2)" />
+                <p style="color: yellow">■</p>
+              </label>
+            </div>
+            <div>
+              <label class="radio">
+                <input type="radio" name="linecolor" onclick="setColor(3)" />
+                <p style="color: blue">■</p>
+              </label>
+            </div>
+            <div>
+              <label class="radio">
+                <input type="radio" name="linecolor" onclick="setEraser()" />
+                <p>消しゴム</p>
+              </label>
+            </div>
+            <div>
+              <label class="select">
+                <select id="linewidth" name="linewidth">
+                  <option value="1">小</option>
+                  <option value="3">中</option>
+                  <option value="7">大</option>
+                </select>
+                <p>太さ</p>
+              </label>
+            </div>
+          </div>
+          <button class="modal-close is-large" aria-label="close" @click="deactivate()"></button>
+        </div>
+      </div>
+      <div id="stampctrl">
+        <div class="modal" v-bind:class="{ 'is-active': isActive }">
+          <div class="modal-background"></div>
+          <div class="modal-content" style="background-color: white;">
+            <?
+                let folder = DriveApp.getFolderById("スタンプ画像の保存フォルダのID");
+                let files = folder.getFiles();
+                let no = 0;
+                while(files.hasNext()) {
+            ?>
+            <div>
+                <label>
+                  <input type="radio" name="stamp" onclick="setStamp(<?= no ?>)" />
+                  <img name="img" width="128" height="128" src="data:image/jpeg;base64,<?= Utilities.base64Encode(files.next().getBlob().getBytes()) ?>"></img>
+                </label>
+              <?
+                  no++;
+                  }
+              ?>
+            </div>
+          </div>
+          <button class="modal-close is-large" aria-label="close" @click="deactivate()"></button>
+        </div>
+      </div>
+    </section>
+    <?!= include('javascript'); ?>
+  </body>
+</html>

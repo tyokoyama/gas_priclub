@@ -1,0 +1,363 @@
+<script crossorigin="use-credentials">
+    const penDialog = Vue.createApp({
+      data() {
+        return {
+          isActive: false
+        }
+      },
+      mounted() {
+        console.log("pens mounted");
+        this.isActive = false;
+      },
+      methods: {
+        activate(e) {
+          console.log("pens activate");
+          this.isActive = true;
+        },
+        deactivate(e) {
+          this.isActive = false;
+        }
+      }
+    }).mount('#penctrl');
+  
+    const stampDialog = Vue.createApp({
+      data() {
+        return {
+          isActive: false
+        }
+      },
+      mounted() {
+        this.isActive = false;
+      },
+      methods: {
+        activate(e) {
+          console.log("stamp activate");
+          this.isActive = true;
+        },
+        deactivate(e) {
+          this.isActive = false;
+        }
+      }
+    }).mount('#stampctrl');
+  
+    const statusctrl = Vue.createApp({
+      data() {
+        return {
+          status: ""
+        }
+      }
+    }).mount('#status');
+  
+    const buttons = Vue.createApp({
+      data() {
+        return {
+          paint: false,
+          send: false,
+          statusctrl: statusctrl,
+          penDialog: penDialog,
+          stampDialog: stampDialog
+        }
+      },
+      mounted() {
+        this.paint = false;
+        this.send = true;
+      },
+      methods: {
+        isWait(e) {
+          return !this.paint;
+        },
+        isPainting(e) {
+          return this.paint;
+        },
+        isSend(e) {
+          return this.send;
+        },
+        shutter(e) {
+          this.paint = true;
+          waitId = setInterval("interval()", 1000);
+          console.log(waitId);
+        },
+        retry(e) {
+          // 撮り直しボタン（映像の更新を再開）
+          this.paint = false;
+          this.send = true;
+          _canvasUpdate();
+          isPaint = 0;
+          mode = 0;
+          undostack = [];
+        },
+        pen(e) {
+          this.penDialog.activate();
+        },
+        stamp(e) {
+          this.stampDialog.activate();
+        },
+        undo(e) {
+          // undo機能
+          console.log(undostack.length);
+          if(undostack.length <= 0) return;
+  
+          let undoImage = undostack.shift();
+          canvasCtx.putImageData(undoImage, 0, 0);
+        },
+        sendImage(e) {
+          // 確定ボタン（canvasのデータをGoogle Driveへ）
+          console.log("send");
+          this.send = true;
+          this.statusctrl.status = "送信中です。";
+          mode = 0;
+  
+          let data = camera.toDataURL("image/jpeg");
+          console.log(data);
+          google.script.run.withSuccessHandler(sendSuccess).withFailureHandler(sendFailure).saveDrive(data);
+        }
+      }
+    }).mount('#buttons');
+  
+    var undostack = [];
+  
+    const video = document.getElementById("video");
+    const camera = document.getElementById("camera");
+  
+    video.autoplay = true;
+    if(navigator.mediaDevices) {
+      let list = document.getElementById('select_camera');
+      navigator.mediaDevices.enumerateDevices()
+        .then(device => {
+          console.log(device);
+          for(let i = 0; i < device.length; i++) {
+            if(device[i].kind == "videoinput") {
+              console.log(device[i]);
+              let opt = document.createElement('option');
+              opt.text = device[i].label;
+              opt.value = device[i].deviceId;
+              list.appendChild(opt);
+            }
+          }
+      });
+  
+      navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+        }).then(stream => {
+          video.srcObject = stream;
+        }).catch(e => {
+          console.log(e);
+        });
+    } else {
+      video.innerHtml("<p>カメラがありません。</p>");
+    }
+  
+    console.log("カメラ起動");
+    video.style.display = "none";
+  
+    function select_camera() {
+      console.log("select_camera");
+      let list = document.getElementById('select_camera');
+      navigator.mediaDevices.getUserMedia({
+            video: {deviceId: list.value},
+            audio: false,
+        }).then(stream => {
+          video.srcObject = stream;
+        }).catch(e => {
+          console.log(e);
+        });
+  
+    }
+  
+    var canvasCtx = camera.getContext('2d');
+    _canvasUpdate();
+  
+    console.log("canvas描画開始");
+    var requestId;
+    function _canvasUpdate() {
+      canvasCtx.drawImage(video, 0, 0, camera.width, camera.height);
+      requestId = requestAnimationFrame(_canvasUpdate);
+    };
+    
+    // 撮影秒数待ち
+    var waitShutter = 0;
+    var waitId = 0;
+    function interval() {
+      // console.log(waitShutter);
+      var timer = document.getElementById("countdown");
+      timer.innerHTML = 3 - waitShutter;
+      if(waitShutter >= 3) {
+        clearInterval(waitId);
+        waitShutter = 0;
+        buttons.send = false;
+        shutter();
+        return;
+      }
+      waitShutter++;
+    }
+  
+    // 撮影ボタン（videoからの映像の更新を止める）
+    function shutter() {
+      cancelAnimationFrame(requestId);
+      undostack.unshift(canvasCtx.getImageData(0, 0, camera.width, camera.height));
+      isPaint = 1;
+    }
+  
+    const sendSuccess = (param) => {
+      console.log("success");
+      console.log(param);
+  
+      statusctrl.status = "送信が完了しました。";
+      buttons.paint = false;
+      buttons.send = true;
+  
+      undostack = [];
+      isPaint = 0;
+      _canvasUpdate();
+    };
+  
+    const sendFailure = (error) => {
+      console.log("failure");
+      let status = document.getElementById("status");
+      status.innerHTML = "<p>送信が失敗しました。(" + error.message + ")</p>";
+      buttons.paint = true;
+      buttons.send = false;
+    };
+  
+    function setColor(color) {
+      canvasCtx.globalCompositeOperation = 'source-over';
+      mode = 1;
+      switch(color) {
+        case 1:
+          canvasCtx.strokeStyle = "red";
+          break;
+        case 2:
+          canvasCtx.strokeStyle = "yellow";
+          break;
+        case 3:
+          canvasCtx.strokeStyle = "blue";
+          break;
+        default:
+          canvasCtx.strokeStyle = "black";
+          break;
+      }
+      let stamps = document.getElementsByName("stamp");
+      for(let i = 0; i < stamps.length; i++) {
+        stamps[i].checked = false;
+      }
+    }
+  
+    function setStamp(no) {
+      mode = 2;
+      imageNo = no;
+      console.log(no);
+      let colors = document.getElementsByName("linecolor");
+      for(let i = 0; i < colors.length; i++) {
+        colors[i].checked = false;
+      }
+    }
+  
+    function setEraser() {
+      mode = 1;
+      canvasCtx.globalCompositeOperation = 'destination-out';
+    }
+  
+    var isDrag = 0;
+    var isPaint = 0;
+    var mode = 0;       // 0: 描画しない、1: ペン、2: スタンプ
+    var imageNo = -1;
+    function onDown(e) {
+      if(isPaint == 1) {
+        let x = e.clientX - e.target.getBoundingClientRect().left;
+        let y = e.clientY - e.target.getBoundingClientRect().top;
+        undostack.unshift(canvasCtx.getImageData(0, 0, camera.width, camera.height));
+  
+        if(mode == 1) {
+          isDrag = 1;
+          pX = x;
+          pY = y;
+          canvasCtx.beginPath();
+          let lw = document.getElementById('linewidth');
+          canvasCtx.lineWidth = lw.value;
+        } else if(mode == 2) {
+          drawStamp(imageNo, x, y);
+        }
+        console.log("onDown");
+      }
+    }
+  
+    var pX = 0;
+    var pY = 0;
+    function onMove(e) {
+      if(isDrag) {
+        let x = e.clientX - e.target.getBoundingClientRect().left;
+        let y = e.clientY - e.target.getBoundingClientRect().top;
+        drawLine(pX, pY, x, y);
+        pX = x;
+        pY = y;
+        console.log("onMove");
+      }
+    }
+  
+    function onUp(e) {
+      paintEnd();
+      console.log("onUp");
+    }
+  
+    function onTouchStart(e) {
+      if(isPaint == 1) {
+        undostack.unshift(canvasCtx.getImageData(0, 0, camera.width, camera.height));
+        let x = e.touches[0].clientX - e.target.getBoundingClientRect().left;
+        let y = e.touches[0].clientY - e.target.getBoundingClientRect().top;
+        if(mode == 1) {
+          isDrag = 1;
+          pX = x;
+          pY = y;
+          canvasCtx.beginPath();
+        } else if(mode == 2) {
+          e.preventDefault();
+          drawStamp(imageNo, x, y);
+        }
+        console.log("onTouchStart");        
+      }
+    }
+  
+    function onTouchMove(e) {
+      if(isDrag) {
+        let x = e.touches[0].clientX - e.target.getBoundingClientRect().left;
+        let y = e.touches[0].clientY - e.target.getBoundingClientRect().top;
+        drawLine(pX, pY, x, y);
+        pX = x;
+        pY = y;
+        console.log("onTouchMove");
+      }
+    }
+  
+    function onTouchEnd(e) {
+      paintEnd();
+      console.log("onTouchEnd");
+    }
+  
+    function drawStamp(imageNo, x, y) {
+      let elem = document.getElementsByName('img');
+      let width = elem[imageNo].width;
+      let height = elem[imageNo].height;
+  //      elem[imageNo].crossOrigin = 'anonymous';
+      canvasCtx.beginPath();
+      canvasCtx.drawImage(elem[imageNo], x - (width / 2), y - (height / 2), width, height);
+      canvasCtx.closePath();
+    }
+    function drawLine(px, py, x, y) {
+      canvasCtx.moveTo(pX, pY);
+      canvasCtx.lineTo(x, y);
+      canvasCtx.stroke();
+    }
+  
+    function paintEnd() {
+      isDrag = 0;
+      canvasCtx.closePath();
+    }
+  
+    camera.addEventListener('mousedown', onDown);
+    camera.addEventListener('mousemove', onMove);
+    camera.addEventListener('mouseup', onUp);
+    camera.addEventListener("touchstart", onTouchStart);
+    camera.addEventListener("touchend", onTouchEnd);
+    camera.addEventListener("touchmove", onTouchMove);
+  </script>
